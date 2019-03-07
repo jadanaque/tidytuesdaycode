@@ -1,0 +1,137 @@
+---
+title: 'TidyTuesday W1: Exploring the #tidytuesday hashtag during 2018'
+author: "Javier Adanaque"
+date: "January 20, 2019"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data
+
+The datasets for week 1 are very interesting: Tweets with the [#rstats](https://twitter.com/hashtag/rstats) and [#TidyTuesday](https://twitter.com/hashtag/tidytuesday) hashtags.
+
+These datasets were obtained using the [rtweet](https://rtweet.info/) package, which is a very practical package for getting Twitter data. I've used a couple of other packages in the past (some years ago), but this one is very easy to use and contains many utility functions that can make your life easier.
+
+For example, to get some tweets with the #TidyTuesday hashtag you can run this (previous configuration is needed):
+
+```
+rt <- search_tweets("#TidyTuesday", include_rts = FALSE)
+```
+
+In this case, the dataset I've chosen to analyze is the one with the #TidyTuesday hashtag tweets. Let's take a quick look at it:
+
+```{r data, warning=FALSE, message=FALSE, cache=TRUE}
+library(tidyverse)
+
+tidytuesday_tweets <- read_rds(url("https://github.com/rfordatascience/tidytuesday/blob/master/data/2019/2019-01-01/tidytuesday_tweets.rds?raw=true"))
+
+tidytuesday_tweets %>%
+  skimr::skim()
+```
+
+For the purpose of this post, I will just select some columns:
+
+```{r column_selection, R.options=list(tibble.width=Inf), cache=TRUE}
+tidytuesday_tweets <- tidytuesday_tweets %>%
+  select(screen_name, status_id, created_at, text, retweet_count, favorite_count)
+
+tidytuesday_tweets
+```
+
+## Wordclouds
+
+In this post, we'll be exploring the words inside the tweets using wordclouds. This way, we can get a general idea of what the main topics were during the 2018 tidytuesdays.
+
+```{r tidytext_words, cache=TRUE}
+library(tidytext)
+tidytuesday_words <- tidytuesday_tweets %>%
+  unnest_tokens(word, text, token = "tweets")
+
+tidytuesday_words
+```
+
+Let's quickly check the word frequency:
+
+```{r word_count, cache=TRUE}
+tidytuesday_words %>%
+  count(word, sort = TRUE)
+```
+
+
+After taking a look at the words, we need to remove some words that we know will affect the analysis. First, we have to remove the stopwords. Then we have to remove some words like "thomasmock" & "R4DScommunity", which are the user names of the people managing the tidytuesdays, so they will appear a lot in this analysis. Obviously, we have to remove the word "#tidytuesday" (all the tweets contain this hashtag...that's the reason we are doing this analysis):
+
+```{r removing_words, cache=TRUE}
+tidytuesday_words <- tidytuesday_words %>%
+  anti_join(stop_words, by = "word") %>%
+  filter(!(word %in% c("@thomasmock", "@r4dscommunity", "#tidytuesday", "tidytuesday", "#rstats", "#r4ds",
+                     "data", "week", "code", "#tidyverse", "#dataviz", "time", "weeks",
+                     "submission", "plot", "plots", "dataset"))) %>%
+  filter(!grepl("^http", word), grepl("[a-zA-Z]", word))
+
+tidytuesday_words
+```
+
+Now, let's try our first wordcloud with all the words we have:
+
+```{r wordcloud_all, cache=TRUE, dependson="removing_words", warning=FALSE, message=FALSE}
+library(ggwordcloud)
+library(ggthemes)
+tidytuesday_words %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 5) %>%
+  ggplot(aes(label = word, size = n, colour = n)) +
+    geom_text_wordcloud() +
+    scale_size_area() +
+    theme_minimal() +
+    scale_colour_gradient2_tableau("Sunset-Sunrise Diverging")
+```
+
+Let's give some shape to the wordcloud:
+
+```{r wordcloud_all_twitterlogo, cache=TRUE, dependson="removing_words", warning=FALSE, message=FALSE}
+library(ggwordcloud)
+library(ggthemes)
+tidytuesday_words %>%
+  count(word, sort = TRUE) %>%
+  filter(n > 5) %>%
+  ggplot(aes(label = word, size = n, colour = n)) +
+    geom_text_wordcloud(rm_outside = TRUE,
+                        mask = png::readPNG("twitter_logo_black-nobackground.png")) +
+    scale_size_area() +
+    theme_minimal() +
+    scale_colour_gradient2_tableau("Sunset-Sunrise Diverging")
+```
+
+That's much nicer! Many words were removed in order to have a neat Twitter-logo-shaped wordcloud. I think some of these removed words are relevant to get a sense of the topics covered in 2018, so I decided to keep both wordclouds, the big one and this twitter-logo-shaped wordcloud (initially, I just wanted the Twitter-logo-shaped one).
+
+And finally, to get a sense of the weekly topics, lets try a wordcloud by week:
+
+```{r by_week, fig.height=14, fig.width=10, cache=TRUE, dependson="removing_words", warning=FALSE, message=FALSE}
+library(lubridate)
+tidytuesday_words %>%
+  mutate(week = as.Date(floor_date(created_at, "week", week_start = 1))) %>%
+  count(week, word, sort = TRUE) %>%
+  group_by(week) %>%
+  filter(row_number(desc(n)) <= 40) %>%
+  mutate(sz = n / max(n)) %>%
+  ungroup() %>%
+  ggplot(aes(label = word, size = sz, colour = sz)) +
+    geom_text_wordcloud(rm_outside = TRUE) +
+    scale_radius(range = c(1, 5)) +  #scale_size_area(max_size = 5) +
+    theme_minimal() +
+    scale_colour_gradient2_tableau("Sunset-Sunrise Diverging") +
+    facet_wrap(~week, ncol = 4, scales = "free")
+```
+
+Nice! Now we can easily spot the main topics covered during 2018 TidyTuesdays.
+
+## Conclusion
+
+As you can see, you can get a good overview of the topics in a text by using just wordclouds. Some data cleaning is necessary, but the results are worthwhile.
+
+
+
+
